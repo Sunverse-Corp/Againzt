@@ -13,6 +13,17 @@ import pandas as pd
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Againzt | Sunverse Corp", page_icon="👁️", layout="wide")
 
+# --- HIDE STREAMLIT UI (MAKE IT LOOK LIKE A NATIVE APP) ---
+hide_streamlit_style = """
+<style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # --- DATABASE & VAULT SETUP ---
 DB_NAME = "againzt_vault.db"
 
@@ -30,12 +41,14 @@ init_db()
 # --- HELPER FUNCTIONS ---
 def get_user_count():
     with sqlite3.connect(DB_NAME) as conn:
-        return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        result = conn.execute("SELECT COUNT(*) FROM users").fetchone()
+        return result[0] if result else 0
 
 def add_to_vault(amount_usd, currency, tier):
     with sqlite3.connect(DB_NAME) as conn:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn.execute("INSERT INTO vault (amount_usd, currency, tier, timestamp) VALUES (?, ?, ?, ?)", 
-                     (amount_usd, currency, tier, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                     (amount_usd, currency, tier, now))
         conn.execute("INSERT INTO users (join_date) VALUES (?)", (datetime.now().strftime("%Y-%m-%d"),))
         conn.commit()
     st.session_state.subscribed = True
@@ -59,7 +72,7 @@ st.markdown("""
     <div class="sunverse-logo">☀️ SUNVERSE CORP PRESENTS: AGAINZT 👁️</div>
 """, unsafe_allow_html=True)
 
-# --- CURRENCY EXCHANGE RATES (Simulated to USD base) ---
+# --- CURRENCY EXCHANGE RATES ---
 currencies = {
     "USD": {"symbol": "$", "rate": 1.0},
     "NGN (Nigeria)": {"symbol": "₦", "rate": 1500.0},
@@ -76,8 +89,12 @@ currencies = {
 
 # --- GROQ API SETUP ---
 try:
-    groq_client = Groq(api_key=st.secrets.get("GROQ_API_KEY", ""))
-except:
+    api_key = st.secrets.get("GROQ_API_KEY", None)
+    if api_key:
+        groq_client = Groq(api_key=api_key)
+    else:
+        groq_client = None
+except Exception as e:
     groq_client = None
 
 def encode_image(img):
@@ -101,12 +118,12 @@ def process_and_read_image(image):
     enhanced_pil = Image.fromarray(sharpened)
     
     # 2. OCR via Groq Vision API
-    extracted_text = "AI Vision Offline. Check API Key."
+    extracted_text = "AI Vision Offline. Check API Key in Secrets."
     if groq_client:
         try:
             base64_img = encode_image(enhanced_pil)
             response = groq_client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview",
+                model="llama-3.2-11b-vision-preview", # Groq's dedicated vision model
                 messages=[
                     {
                         "role": "user",
@@ -116,7 +133,8 @@ def process_and_read_image(image):
                         ]
                     }
                 ],
-                temperature=0.1
+                temperature=0.1,
+                max_tokens=1024
             )
             extracted_text = response.choices[0].message.content
         except Exception as e:
@@ -211,7 +229,7 @@ with tabs[2]:
                     
                     with col2:
                         st.write("**Enhanced & Cleared Image**")
-                        st.image(enhanced_img, use_container_width=True)
+                        st.image(enhanced_img, use_container_width=True, caption="Contrast & Sharpening Applied")
                         
                     st.write("### 📝 Extracted Text:")
                     st.info(extracted_text)
@@ -222,7 +240,8 @@ with tabs[3]:
     password = st.text_input("Boss Password:", type="password", key="boss_pass")
     
     if password:
-        if password == st.secrets.get("BOSSMODE_PASSWORD", ""):
+        correct_password = st.secrets.get("BOSSMODE_PASSWORD", "")
+        if password == correct_password and correct_password != "":
             st.session_state.is_boss = True
             st.success("Welcome, Sunverse CEO. Free Scanner Access Granted.")
             
