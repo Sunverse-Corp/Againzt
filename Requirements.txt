@@ -1,5 +1,6 @@
 streamlit
-groq
-Pillow
 opencv-python-headless
 numpy
+Pillow
+groq
+pandas
